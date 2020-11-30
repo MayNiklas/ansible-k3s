@@ -1,2 +1,11 @@
 ---
 # tasks file for ansible-k3s
+
+- name: Install necessary packages
+  become: true
+  package:
+    name: curl
+    state: latest
+
+- name: Executing K3s install script
+  shell: curl -sfL https://get.k3s.io | sh -

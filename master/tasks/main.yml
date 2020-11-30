@@ -4,9 +4,21 @@
 - name: Install necessary packages
   become: true
   package:
-    name: curl
+    name: "{{ item }}"
     state: latest
+  loop:
+    - curl
 
 - name: Executing K3s install script
   become: true
   shell: curl -sfL https://get.k3s.io | sh -
+
+- name: Read k3s token
+  become: true
+  slurp:
+    src: "/var/lib/rancher/k3s/server/node-token"
+  register: k3s_token
+
+- name: Decode data and store as fact
+  set_fact:
+    k3s_token: "{{ k3s_token.content | b64decode | replace('\n', '')  }}"

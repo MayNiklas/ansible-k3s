@@ -1,12 +1,19 @@
 ---
 # tasks file for ansible-k3s
 
+- name: setting k3s variables
+  set_fact:
+    k3s_ip: "{{ groups['master'] | map('extract', hostvars, ['ansible_host']) | join(',') }}"
+    k3s_token: "{{ groups['master'] | map('extract', hostvars, ['k3s_token']) | join(',') }}"
+
 - name: Install necessary packages
   become: true
   package:
-    name: curl
+    name: "{{ item }}"
     state: latest
+  loop:
+    - curl
 
 - name: Executing K3s install script
   become: true
-  shell: curl -sfL https://get.k3s.io | K3S_URL=https://myserver:6443 K3S_TOKEN=mynodetoken sh -
+  shell: "curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -"

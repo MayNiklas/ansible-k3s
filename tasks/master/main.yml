@@ -8,4 +8,5 @@
     state: latest
 
 - name: Executing K3s install script
+  become: true
   shell: curl -sfL https://get.k3s.io | sh -

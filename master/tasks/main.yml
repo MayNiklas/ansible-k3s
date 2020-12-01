@@ -22,3 +22,31 @@
 - name: Decode data and store as fact
   set_fact:
     k3s_token: "{{ k3s_token.content | b64decode | replace('\n', '')  }}"
+
+# Copying k3s.yaml to localhost
+# This way, you are able to control your k3s cluster from your local machine
+
+- name: Creates directory on your computer
+  file:
+    path: ~/.kube
+    state: directory
+
+- name: copies config to your computer
+  become: true
+  fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: ~/.kube/config
+    flat: yes
+
+- name: setting k3s variables
+  delegate_to: localhost
+  set_fact:
+    k3s_ip: "{{ groups['master'] | map('extract', hostvars, ['ansible_host']) | join(',') }}"
+    k3s_token: "{{ groups['master'] | map('extract', hostvars, ['k3s_token']) | join(',') }}"
+
+- name: PasswordAuthentication no
+  delegate_to: localhost
+  lineinfile:
+    dest: ~/.kube/config
+    regexp: '    server: https:\/\/127.0.0.1:6443'
+    line: "    server: https://{{ k3s_ip }}:6443"

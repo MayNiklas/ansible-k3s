@@ -1,19 +1,17 @@
 ---
 # tasks file for ansible-k3s
 
-- name: setting k3s variables
-  set_fact:
-    k3s_ip: "{{ groups['master'] | map('extract', hostvars, ['ansible_host']) | join(',') }}"
-    k3s_token: "{{ groups['master'] | map('extract', hostvars, ['k3s_token']) | join(',') }}"
+- name: Copy K3s service file
+  template:
+    src: "k3s.service.j2"
+    dest: "{{ systemd_dir }}/k3s-node.service"
+    owner: root
+    group: root
+    mode: 0755
 
-- name: Install necessary packages
-  become: true
-  package:
-    name: "{{ item }}"
-    state: latest
-  loop:
-    - curl
-
-- name: Executing K3s install script
-  become: true
-  shell: "curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -"
+- name: Enable and check K3s service
+  systemd:
+    name: k3s-node
+    daemon_reload: yes
+    state: restarted
+    enabled: yes

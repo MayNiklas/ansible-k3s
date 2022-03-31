@@ -1,52 +1,80 @@
 ---
 # tasks file for ansible-k3s
 
-- name: Install necessary packages
-  become: true
-  package:
-    name: "{{ item }}"
-    state: latest
-  loop:
-    - curl
+- name: Copy K3s service file
+  register: k3s_service
+  template:
+    src: "k3s.service.j2"
+    dest: "{{ systemd_dir }}/k3s.service"
+    owner: root
+    group: root
+    mode: 0644
 
-- name: Executing K3s install script
-  become: true
-  shell: curl -sfL https://get.k3s.io | sh -
+- name: Enable and check K3s service
+  systemd:
+    name: k3s
+    daemon_reload: yes
+    state: restarted
+    enabled: yes
 
-- name: Read k3s token
-  become: true
-  slurp:
-    src: "/var/lib/rancher/k3s/server/node-token"
-  register: k3s_token
+- name: Wait for node-token
+  wait_for:
+    path: "{{ k3s_server_location }}/server/node-token"
 
-- name: Decode data and store as fact
-  set_fact:
-    k3s_token: "{{ k3s_token.content | b64decode | replace('\n', '')  }}"
+- name: Register node-token file access mode
+  stat:
+    path: "{{ k3s_server_location }}/server/node-token"
+  register: p
 
-# Copying k3s.yaml to localhost
-# This way, you are able to control your k3s cluster from your local machine
-
-- name: Creates directory on your computer
+- name: Change file access node-token
   file:
-    path: ~/.kube
-    state: directory
+    path: "{{ k3s_server_location }}/server/node-token"
+    mode: "g+rx,o+rx"
 
-- name: copies config to your computer
-  become: true
-  fetch:
-    src: /etc/rancher/k3s/k3s.yaml
-    dest: ~/.kube/config
-    flat: yes
+- name: Read node-token from master
+  slurp:
+    path: "{{ k3s_server_location }}/server/node-token"
+  register: node_token
 
-- name: setting k3s variables
-  delegate_to: localhost
+- name: Store Master node-token
   set_fact:
-    k3s_ip: "{{ groups['master'] | map('extract', hostvars, ['ansible_host']) | join(',') }}"
-    k3s_token: "{{ groups['master'] | map('extract', hostvars, ['k3s_token']) | join(',') }}"
+    token: "{{ node_token.content | b64decode | regex_replace('\n', '') }}"
 
-- name: Correcting the master servers IP
-  delegate_to: localhost
-  lineinfile:
-    dest: ~/.kube/config
-    regexp: '    server: https:\/\/127.0.0.1:6443'
-    line: "    server: https://{{ k3s_ip }}:6443"
+- name: Restore node-token file access
+  file:
+    path: "{{ k3s_server_location }}/server/node-token"
+    mode: "{{ p.stat.mode }}"
+
+- name: Create directory .kube
+  file:
+    path: ~{{ ansible_user }}/.kube
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "u=rwx,g=rx,o="
+
+- name: Copy config file to user home directory
+  copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: ~{{ ansible_user }}/.kube/config
+    remote_src: yes
+    owner: "{{ ansible_user }}"
+    mode: "u=rw,g=,o="
+
+- name: Replace https://localhost:6443 by https://master-ip:6443
+  command: >-
+    k3s kubectl config set-cluster default
+      --server=https://{{ master_ip }}:6443
+      --kubeconfig ~{{ ansible_user }}/.kube/config
+  changed_when: true
+
+- name: Create kubectl symlink
+  file:
+    src: /usr/local/bin/k3s
+    dest: /usr/local/bin/kubectl
+    state: link
+
+- name: Create crictl symlink
+  file:
+    src: /usr/local/bin/k3s
+    dest: /usr/local/bin/crictl
+    state: link

@@ -1,2 +1,7 @@
 ---
 # defaults file for ansible-k3s
+k3s_server_location: /var/lib/rancher/k3s
+systemd_dir: /etc/systemd/system
+master_ip: "{{ hostvars[groups['master'][0]]['ansible_host'] | default(groups['master'][0]) }}"
+ansible_user: nik
+extra_server_args: ""
